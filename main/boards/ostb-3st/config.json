@@ -1,0 +1,12 @@
+{
+    "target": "esp32s3",
+    "builds": [
+        {
+            "name": "ostb-3st",
+            "sdkconfig_append": [
+                "CONFIG_LANGUAGE_VI_VN=y",
+                "CONFIG_USE_DEVICE_AEC=y"
+            ]
+        }
+    ]
+}
