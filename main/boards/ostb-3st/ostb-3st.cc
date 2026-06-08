@@ -6,11 +6,13 @@
 #include "config.h"
 #include "i2c_device.h"
 #include "power_manager.h"
+#include "power_save_timer.h"
 #include "assets/lang_config.h"
 
 #include <esp_log.h>
 #include <esp_lcd_panel_vendor.h>
 #include <esp_lcd_nv3023.h>
+#include <esp_sleep.h>
 #include <driver/i2c_master.h>
 #include <driver/spi_common.h>
 #include <freertos/FreeRTOS.h>
@@ -95,6 +97,7 @@ private:
     i2c_master_bus_handle_t i2c_bus_ = nullptr;
     Cst816Touch* touch_ = nullptr;
     PowerManager* power_manager_ = nullptr;
+    PowerSaveTimer* power_save_timer_ = nullptr;
     Button boot_button_;
     Button volume_up_button_;
     Button volume_down_button_;
@@ -121,6 +124,36 @@ private:
 
     void InitializePowerManager() {
         power_manager_ = new PowerManager(CHARGE_STATUS_GPIO);
+    }
+
+    // Idle power saving: after kSecondsToSleep the CPU drops to a low clock and
+    // auto light-sleeps (display dimmed); after kSecondsToShutdown the device
+    // enters deep sleep, woken only by the BOOT button (the only RTC-capable
+    // input — the CST816 touch has no INT line).
+    void InitializePowerSaveTimer() {
+        const int kSecondsToSleep = 60;
+        const int kSecondsToShutdown = 300;
+        power_save_timer_ = new PowerSaveTimer(240, kSecondsToSleep, kSecondsToShutdown);
+        power_save_timer_->OnEnterSleepMode([this]() {
+            ESP_LOGI(TAG, "Entering light sleep");
+            GetDisplay()->SetPowerSaveMode(true);
+            GetBacklight()->SetBrightness(1);
+        });
+        power_save_timer_->OnExitSleepMode([this]() {
+            ESP_LOGI(TAG, "Exiting light sleep");
+            GetDisplay()->SetPowerSaveMode(false);
+            GetBacklight()->RestoreBrightness();
+        });
+        power_save_timer_->OnShutdownRequest([this]() {
+            ESP_LOGI(TAG, "Entering deep sleep, wake on BOOT button (GPIO%d)", BOOT_BUTTON_GPIO);
+            esp_lcd_panel_disp_on_off(panel_, false);
+            GetBacklight()->SetBrightness(0);
+            // BOOT button is active-low; wake when it is pulled low. ESP32-S3
+            // uses ext1 (ext0 is unsupported); GPIO0 is RTC-capable.
+            esp_sleep_enable_ext1_wakeup_io(1ULL << BOOT_BUTTON_GPIO, ESP_EXT1_WAKEUP_ANY_LOW);
+            esp_deep_sleep_start();
+        });
+        power_save_timer_->SetEnabled(true);
     }
 
     void InitializeSpi() {
@@ -165,6 +198,7 @@ private:
     void InitializeButtons() {
         boot_button_.OnClick([this]() {
             ESP_LOGI(TAG, "Boot button clicked");
+            if (power_save_timer_) power_save_timer_->WakeUp();
             auto& app = Application::GetInstance();
             if (app.GetDeviceState() == kDeviceStateStarting) {
                 EnterWifiConfigMode();
@@ -175,6 +209,7 @@ private:
 
         volume_up_button_.OnClick([this]() {
             ESP_LOGI(TAG, "Volume up clicked");
+            if (power_save_timer_) power_save_timer_->WakeUp();
             auto codec = GetAudioCodec();
             auto volume = codec->output_volume() + 10;
             if (volume > 100) {
@@ -190,6 +225,7 @@ private:
 
         volume_down_button_.OnClick([this]() {
             ESP_LOGI(TAG, "Volume down clicked");
+            if (power_save_timer_) power_save_timer_->WakeUp();
             auto codec = GetAudioCodec();
             auto volume = codec->output_volume() - 10;
             if (volume < 0) {
@@ -216,6 +252,7 @@ private:
             bool is_touched = self->touch_->ReadFingerCount() > 0;
             if (is_touched && !was_touched) {
                 ESP_LOGI(TAG, "Touch detected");
+                if (self->power_save_timer_) self->power_save_timer_->WakeUp();
             }
             // Trigger on the release edge so a tap toggles the chat state once.
             if (!is_touched && was_touched) {
@@ -239,6 +276,7 @@ public:
         volume_down_button_(VOLUME_DOWN_BUTTON_GPIO) {
         InitializeI2c();
         InitializePowerManager();
+        InitializePowerSaveTimer();
         InitializeSpi();
         InitializeNv3023Display();
         InitializeButtons();
@@ -275,6 +313,8 @@ public:
     virtual bool GetBatteryLevel(int& level, bool& charging, bool& discharging) override {
         charging = power_manager_->IsCharging();
         discharging = power_manager_->IsDischarging();
+        // Only allow idle sleep/shutdown while running on battery.
+        if (power_save_timer_) power_save_timer_->SetEnabled(discharging);
         level = power_manager_->GetBatteryLevel();
         return true;
     }

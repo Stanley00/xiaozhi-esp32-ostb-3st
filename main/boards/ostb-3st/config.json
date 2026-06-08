@@ -5,7 +5,9 @@
             "name": "ostb-3st",
             "sdkconfig_append": [
                 "CONFIG_LANGUAGE_VI_VN=y",
-                "CONFIG_USE_DEVICE_AEC=y"
+                "CONFIG_USE_DEVICE_AEC=y",
+                "CONFIG_PM_ENABLE=y",
+                "CONFIG_FREERTOS_USE_TICKLESS_IDLE=y"
             ]
         }
     ]
