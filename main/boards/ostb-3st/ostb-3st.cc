@@ -120,6 +120,29 @@ private:
             },
         };
         ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &i2c_bus_));
+
+        // Temporary Scan the bus
+        ESP_LOGI(TAG, "Starting I2C bus scan...");
+        int devices_found = 0;
+        
+        // Valid 7-bit I2C addresses are 0x03 to 0x77
+        for (uint16_t addr = 0x03; addr <= 0x77; addr++) {
+            // We pass a timeout (e.g., 50ms) to wait for the probe response
+            esp_err_t res = i2c_master_probe(i2c_bus_, addr, 50);
+            
+            if (res == ESP_OK) {
+                ESP_LOGI(TAG, "Found device at address: 0x%02X", addr);
+                devices_found++;
+            } else if (res == ESP_ERR_TIMEOUT) {
+                ESP_LOGW(TAG, "Timeout on address 0x%02X", addr);
+            }
+        }
+        
+        if (devices_found == 0) {
+            ESP_LOGW(TAG, "No I2C devices found.");
+        } else {
+            ESP_LOGI(TAG, "Scan complete. Found %d device(s).", devices_found);
+        }
     }
 
     void InitializePowerManager() {
