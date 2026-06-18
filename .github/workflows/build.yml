@@ -4,10 +4,16 @@ on:
   push:
     branches:
       - main
-      - ci/* # for ci test
+      - ci/*
   pull_request:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'Board variant to build (leave empty for default logic)'
+        required: false
+        default: 'ostb-3st'
 
 permissions:
   contents: read
@@ -36,8 +42,15 @@ jobs:
         name: Select variants based on changes
         env:
           ALL_VARIANTS: ${{ steps.list.outputs.all_variants }}
+          INPUT_VARIANT: ${{ github.event.inputs.variant }}
         run: |
           EVENT_NAME="${{ github.event_name }}"
+
+          # Manually triggered: use provided variant
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_VARIANT" ]]; then
+            echo "variants=[{\"board\": \"$INPUT_VARIANT\", \"full_name\": \"$INPUT_VARIANT\", \"name\": \"$INPUT_VARIANT\"}]" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
           # push 到 main 分支，编译全部变体
           if [[ "$EVENT_NAME" == "push" ]]; then
@@ -87,7 +100,7 @@ jobs:
     needs: prepare
     if: ${{ needs.prepare.outputs.variants != '[]' }}
     strategy:
-      fail-fast: false  # 单个变体失败不影响其它变体
+      fail-fast: false
       matrix:
         include: ${{ fromJson(needs.prepare.outputs.variants) }}
     runs-on: ubuntu-latest
