@@ -108,6 +108,7 @@ private:
 
 public:
     PowerManager(gpio_num_t pin) : charging_pin_(pin) {
+        gpio_reset_pin(charging_pin_); // try reset the pin first
         gpio_config_t io_conf = {};
         io_conf.intr_type = GPIO_INTR_DISABLE;
         io_conf.mode = GPIO_MODE_INPUT;
