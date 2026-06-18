@@ -157,11 +157,11 @@ public:
         if (battery_level_ == 100) {
             return false;
         }
-        return is_charging_;
+        return !is_charging_;
     }
 
     bool IsDischarging() {
-        return !is_charging_;
+        return !IsCharging();
     }
 
     uint8_t GetBatteryLevel() {
