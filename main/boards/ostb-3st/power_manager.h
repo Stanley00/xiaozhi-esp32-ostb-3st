@@ -113,7 +113,7 @@ public:
         io_conf.mode = GPIO_MODE_INPUT;
         io_conf.pin_bit_mask = (1ULL << charging_pin_);
         io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-        io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+        io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
         gpio_config(&io_conf);
 
         esp_timer_create_args_t timer_args = {
