@@ -121,4 +121,5 @@ jobs:
         with:
           name: xiaozhi_${{ matrix.full_name }}_${{ github.sha }}
           path: build/merged-binary.bin
+          retention-days: 3
           if-no-files-found: error
